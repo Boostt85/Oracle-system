@@ -365,6 +365,7 @@ function fetchData() {
       signals = data.signals || [];
       document.getElementById('sc').textContent = data.snapCount || signals.length;
       document.getElementById('pc').textContent = signals.length;
+      document.getElementById('days').textContent = data.sessionDays || '-';
       document.getElementById('sc2').textContent = (data.snapCount||0)+' snaps';
       document.getElementById('pc2').textContent = signals.length+' signals';
       if(data.lastUpdated){
