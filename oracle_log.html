@@ -168,6 +168,18 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbw2VCtv2qYYd1k-w7wyT0HpVJ
 var MOVE_MIN = 50;
 var signals = [], filtered = [], dirFilter = 'all', currentPage = 0, pageSize = 100;
 
+function toNYTime(ts) {
+  if (!ts) return ts;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(ts.toString())) return ts.toString();
+  try {
+    var d = new Date(ts);
+    var ny = d.toLocaleString('en-US', {timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+    var parts = ny.replace(',','').split(' ');
+    var dateParts = parts[0].split('/');
+    return dateParts[2]+'-'+dateParts[0]+'-'+dateParts[1]+' '+parts[1];
+  } catch(e) { return ts.toString(); }
+}
+
 function wCell(sig, prefix, isTotal) {
   var mu = sig[prefix+'_MAX_UP'];
   var md = sig[prefix+'_MAX_DN'];
@@ -193,7 +205,7 @@ function wCell(sig, prefix, isTotal) {
 function getFiltered() {
   var df = document.getElementById('df').value;
   var f = signals.slice();
-  if (df !== 'all') f = f.filter(function(s) { return s['TIMESTAMP'].slice(0,10) === df; });
+  if (df !== 'all') f = f.filter(function(s) { return toNYTime(s['TIMESTAMP']).slice(0,10) === df; });
   if (dirFilter === 'up') f = f.filter(function(s) { return s['DIR'] === 'UP'; });
   if (dirFilter === 'dn') f = f.filter(function(s) { return s['DIR'] === 'DN'; });
   return f;
@@ -202,7 +214,7 @@ function getFiltered() {
 function buildDateFilter() {
   var sel = document.getElementById('df');
   var dates = {};
-  signals.forEach(function(s) { var d = s['TIMESTAMP'].slice(0,10); dates[d] = (dates[d]||0)+1; });
+  signals.forEach(function(s) { var d = toNYTime(s['TIMESTAMP']).slice(0,10); dates[d] = (dates[d]||0)+1; });
   var keys = Object.keys(dates).sort();
   sel.innerHTML = '<option value="all">All dates</option>';
   keys.forEach(function(d) { sel.innerHTML += '<option value="'+d+'">'+d+' ('+dates[d]+')</option>'; });
@@ -229,7 +241,7 @@ function renderPage() {
     var rp = sig['RTY'] ? '<td class="rp">'+parseFloat(sig['RTY']).toFixed(2)+'</td>' : '<td style="color:var(--text3)">-</td>';
 
     rows += '<tr onclick="showMatch('+globalIdx+')">' +
-      '<td class="ts">'+sig['TIMESTAMP']+'</td>' +
+      '<td class="ts">'+toNYTime(sig['TIMESTAMP'])+'</td>' +
       '<td class="np">'+parseFloat(sig['NQ']).toFixed(2)+'</td>' +
       ep + rp +
       '<td style="text-align:center">'+dirTag+'</td>' +
@@ -253,7 +265,7 @@ function showMatch(idx) {
   var matches = sig['MATCH_DATA'] || [];
   document.getElementById('pp-count').textContent = '-- '+sig['MATCH_COUNT']+' cross-day sessions';
   document.getElementById('pp-sub').textContent =
-    (isBuy?'BUY':'SELL')+' signal -- '+sig['TIMESTAMP']+
+    (isBuy?'BUY':'SELL')+' signal -- '+toNYTime(sig['TIMESTAMP'])+
     ' -- NQ '+parseFloat(sig['NQ']).toFixed(2)+
     ' -- 15m profit: +'+(parseFloat(sig['PROFIT_POTENTIAL'])||0).toFixed(1)+'pt'+
     ' -- drawdown: '+(parseFloat(sig['DRAWDOWN'])||0).toFixed(1)+
