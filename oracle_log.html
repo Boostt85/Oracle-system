@@ -294,8 +294,8 @@ function showMatch(idx) {
 
     var wg = '<div class="win-grid">';
     [['15m',m.w15_net,m.w15_max_up,m.w15_max_dn,false],
-     ['30m',m.w30_net,null,null,false],
-     ['1hr',m.w60_net,null,null,false],
+     ['30m',m.w30_net,m.w30_max_up,m.w30_max_dn,false],
+     ['1hr',m.w60_net,m.w60_max_up,m.w60_max_dn,false],
      ['4hr',m.w240_net,m.w240_max_up,m.w240_max_dn,true]].forEach(function(p){
       var wlb=p[0],net=p[1],mu=p[2],md=p[3],isT=p[4];
       if(net===null||net===undefined){
