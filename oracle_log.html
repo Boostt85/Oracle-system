@@ -125,6 +125,7 @@ td.total-col{background:#050e1a;border-right:2px solid #2060a0}
     <div class="oc-item"><div class="oc-val" id="oc-total" style="color:#4080ff">0</div><div class="oc-lbl">SESSIONS</div></div>
     <div class="oc-item"><div class="oc-val" id="oc-up" style="color:var(--bull)">0</div><div class="oc-lbl">WENT UP</div></div>
     <div class="oc-item"><div class="oc-val" id="oc-dn" style="color:var(--bear)">0</div><div class="oc-lbl">WENT DOWN</div></div>
+    <div class="oc-item"><div class="oc-val" id="oc-fl" style="color:var(--flat)">0</div><div class="oc-lbl">MIXED</div></div>
     <div class="oc-item"><div class="oc-val" id="oc-profit" style="color:var(--bull)">-</div><div class="oc-lbl">AVG PROFIT</div></div>
     <div class="oc-item"><div class="oc-val" id="oc-dd" style="color:var(--bear)">-</div><div class="oc-lbl">AVG DRAWDOWN</div></div>
     <div class="oc-item"><div class="oc-val" id="oc-4hr" style="color:#4080ff">-</div><div class="oc-lbl">AVG 4HR</div></div>
@@ -280,6 +281,7 @@ function showMatch(idx) {
   document.getElementById('oc-total').textContent=total;
   document.getElementById('oc-up').textContent=up;
   document.getElementById('oc-dn').textContent=dn;
+  document.getElementById('oc-fl').textContent=fl;
   document.getElementById('oc-profit').textContent='+'+(parseFloat(sig['PROFIT_POTENTIAL'])||0).toFixed(1)+'pt';
   document.getElementById('oc-dd').textContent=(parseFloat(sig['DRAWDOWN'])||0).toFixed(1)+'pt';
   document.getElementById('oc-4hr').textContent=sig['W240_NET']?(parseFloat(sig['W240_NET'])>0?'+':'')+parseFloat(sig['W240_NET']).toFixed(1)+'pt':'?';
