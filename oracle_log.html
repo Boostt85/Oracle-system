@@ -101,10 +101,10 @@ td.total-col{background:#050e1a;border-right:2px solid #2060a0}
   </div>
 </div>
 <div class="controls">
-  <span style="font-size:10px;color:var(--text2)">DIRECTION:</span>
-  <button class="btn active" id="d-all" onclick="setDir('all')">All</button>
-  <button class="btn" id="d-up" onclick="setDir('up')">BUY setups</button>
-  <button class="btn" id="d-dn" onclick="setDir('dn')">SELL setups</button>
+  <button class="btn active" id="d-all" onclick="setDir('all')">ALL</button>
+  <button class="btn" id="d-up" onclick="setDir('up')">BUYS</button>
+  <button class="btn" id="d-dn" onclick="setDir('dn')">SELLS</button>
+  <button class="btn" id="d-mixed" onclick="setDir('mixed')">MIXED</button>
   <div class="sep">|</div>
   <span style="font-size:10px;color:var(--text2)">Date:</span>
   <select id="df" onchange="renderPage()"><option value="all">All dates</option></select>
@@ -207,8 +207,9 @@ function getFiltered() {
   var df = document.getElementById('df').value;
   var f = signals.slice();
   if (df !== 'all') f = f.filter(function(s) { return toNYTime(s['TIMESTAMP']).slice(0,10) === df; });
-  if (dirFilter === 'up') f = f.filter(function(s) { return s['DIR'] === 'UP'; });
-  if (dirFilter === 'dn') f = f.filter(function(s) { return s['DIR'] === 'DN'; });
+  if (dirFilter === 'up') f = f.filter(function(s) { return s['DIR'] === 'UP' && s['VERDICT'].toString().indexOf('MIXED') < 0; });
+  if (dirFilter === 'dn') f = f.filter(function(s) { return s['DIR'] === 'DN' && s['VERDICT'].toString().indexOf('MIXED') < 0; });
+  if (dirFilter === 'mixed') f = f.filter(function(s) { return s['VERDICT'].toString().indexOf('MIXED') >= 0; });
   return f;
 }
 
@@ -347,9 +348,13 @@ function showMatch(idx) {
 
 function setDir(d) {
   dirFilter = d;
-  ['all','up','dn'].forEach(function(x){var b=document.getElementById('d-'+x);b.classList.remove('active','active-bull','active-bear');});
-  if(d==='up')document.getElementById('d-up').classList.add('active-bull');
-  else if(d==='dn')document.getElementById('d-dn').classList.add('active-bear');
+  ['all','up','dn','mixed'].forEach(function(x){
+    var b=document.getElementById('d-'+x);
+    if(b) b.classList.remove('active','active-bull','active-bear');
+  });
+  if(d==='up') document.getElementById('d-up').classList.add('active-bull');
+  else if(d==='dn') document.getElementById('d-dn').classList.add('active-bear');
+  else if(d==='mixed') document.getElementById('d-mixed').classList.add('active');
   else document.getElementById('d-all').classList.add('active');
   currentPage=0;renderPage();
 }
