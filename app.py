@@ -40,7 +40,7 @@ def parse_snapshot(raw):
     else:
         return None
     for tf in TFS:
-        m = re.search(tf + r'\s+NQ:([\d.]+)\/([\\d.]+)\s+ES:([\d.]+)\/([\d.]+)\s+RT:([\d.]+)\/([\d.]+)', raw)
+        m = re.search(tf + r'\s+NQ:([\d.]+)\/([\d.]+)\s+ES:([\d.]+)\/([\d.]+)\s+RT:([\d.]+)\/([\d.]+)', raw)
         if m:
             s['raptors']['NQ_'+tf+'_S1'] = float(m.group(1))
             s['raptors']['NQ_'+tf+'_S2'] = float(m.group(2))
@@ -67,6 +67,8 @@ def similarity(a, b):
 def load_snapshots_from_sheet():
     global last_reload
     try:
+        from datetime import timedelta
+        cutoff = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
         sheet = get_sheet()
         sh1 = sheet.worksheet('Sheet1')
         rows = sh1.get_all_values()
@@ -75,8 +77,13 @@ def load_snapshots_from_sheet():
         for row in rows[1:]:
             if len(row) < 2 or not row[1]:
                 continue
+            # Quick date filter before full parse
+            if row[0] and row[0][:10] < cutoff:
+                continue
             s = parse_snapshot(row[1])
             if not s:
+                continue
+            if s['timestamp'][:10] < cutoff:
                 continue
             key = s['timestamp'] + '_' + str(s['nqPrice'])
             if key in seen:
@@ -89,7 +96,7 @@ def load_snapshots_from_sheet():
             snap_cache.clear()
             snap_cache.extend(snaps)
             last_reload = time.time()
-        print(f"Cache loaded: {len(snaps)} snapshots")
+        print(f"Cache loaded: {len(snaps)} snapshots (last 30 days)")
     except Exception as e:
         print(f"Cache load error: {e}")
 
@@ -206,13 +213,11 @@ def write_live_signal(signal):
     except Exception as e:
         print(f"Write signal error: {e}")
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
+def process_webhook_async(raw):
     try:
-        raw = request.data.decode('utf-8')
         snap = parse_snapshot(raw)
         if not snap:
-            return jsonify({'status': 'parse_failed'}), 200
+            return
         snaps = get_cached_snaps()
         existing = any(s['timestamp'] == snap['timestamp'] and s['nqPrice'] == snap['nqPrice'] for s in snaps)
         if not existing:
@@ -224,17 +229,25 @@ def webhook():
                 snap_cache.extend(snaps)
         current = next((s for s in snaps if s['timestamp'] == snap['timestamp'] and s['nqPrice'] == snap['nqPrice']), None)
         if not current:
-            return jsonify({'status': 'snap_not_found'}), 200
+            return
         result = run_pattern_match(current, snaps)
         if result:
             verdict = result['verdict']
             direction = result['direction']
             if ('BULL' in verdict and direction == 'UP') or ('BEAR' in verdict and direction == 'DN'):
-                threading.Thread(target=write_live_signal, args=(result,)).start()
-                return jsonify({'status': 'signal', 'verdict': verdict, 'direction': direction}), 200
-        return jsonify({'status': 'no_signal'}), 200
+                write_live_signal(result)
+                print(f"SIGNAL: {verdict} {direction} at {snap['timestamp']}")
     except Exception as e:
-        print(f"Webhook error: {e}")
+        print(f"Async process error: {e}")
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    try:
+        raw = request.data.decode('utf-8')
+        # Return immediately to TradingView
+        threading.Thread(target=process_webhook_async, args=(raw,)).start()
+        return jsonify({'status': 'received'}), 200
+    except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
