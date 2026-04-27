@@ -169,23 +169,39 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbw2VCtv2qYYd1k-w7wyT0HpVJ
 var MOVE_MIN = 50;
 var signals = [], filtered = [], dirFilter = 'all', currentPage = 0, pageSize = 100;
 
-function toNYTime(ts) {
-  if (!ts) return ts;
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(ts.toString())) return ts.toString();
+// Normalize timestamp to consistent YYYY-MM-DD HH:MM format
+function normalizeTS(ts) {
+  if (!ts) return '';
+  var s = ts.toString();
+  // Already in YYYY-MM-DD HH:MM format
+  if (/^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}$/.test(s)) {
+    // Zero-pad single-digit hour
+    var parts = s.split(' ');
+    if (parts[1].length === 4) parts[1] = '0' + parts[1];
+    return parts[0] + ' ' + parts[1];
+  }
+  // Google Sheets Date object comes as ISO string or date string
   try {
-    var d = new Date(ts);
-    var ny = d.toLocaleString('en-US', {timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
-    var parts = ny.replace(',','').split(' ');
-    var dateParts = parts[0].split('/');
-    return dateParts[2]+'-'+dateParts[0]+'-'+dateParts[1]+' '+parts[1];
-  } catch(e) { return ts.toString(); }
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    var y = d.getFullYear();
+    var mo = ('0'+(d.getMonth()+1)).slice(-2);
+    var da = ('0'+d.getDate()).slice(-2);
+    var hh = ('0'+d.getHours()).slice(-2);
+    var mm = ('0'+d.getMinutes()).slice(-2);
+    return y+'-'+mo+'-'+da+' '+hh+':'+mm;
+  } catch(e) { return s; }
+}
+
+function getDateStr(ts) {
+  return normalizeTS(ts).slice(0, 10);
 }
 
 function wCell(sig, prefix, isTotal) {
   var mu = sig[prefix+'_MAX_UP'];
   var md = sig[prefix+'_MAX_DN'];
   var net = sig[prefix+'_NET'];
-  if (mu === null || mu === '') return '<td class="tbl-wc" '+(isTotal?'style="background:#050e1a"':'')+'>-</td>';
+  if (mu === null || mu === '' || mu === undefined) return '<td class="tbl-wc" '+(isTotal?'style="background:#050e1a"':'')+'>-</td>';
   mu = parseFloat(mu); md = parseFloat(md); net = parseFloat(net);
   var isBuy = sig['DIR'] === 'UP';
   var profit = isBuy ? mu : Math.abs(md);
@@ -203,20 +219,42 @@ function wCell(sig, prefix, isTotal) {
     '<span style="color:'+netColor+';font-weight:'+(isTotal?'700':'500')+';font-size:'+(isTotal?'13':'11')+'px">'+(net>0?'+':'')+net.toFixed(1)+'</span></td>';
 }
 
+function getVerdict(s) {
+  return (s['VERDICT'] || '').toString();
+}
+
 function getFiltered() {
   var df = document.getElementById('df').value;
   var f = signals.slice();
-  if (df !== 'all') f = f.filter(function(s) { return toNYTime(s['TIMESTAMP']).slice(0,10) === df; });
-  if (dirFilter === 'up') f = f.filter(function(s) { return s['DIR'] === 'UP' && s['VERDICT'].toString().indexOf('MIXED') < 0; });
-  if (dirFilter === 'dn') f = f.filter(function(s) { return s['DIR'] === 'DN' && s['VERDICT'].toString().indexOf('MIXED') < 0; });
-  if (dirFilter === 'mixed') f = f.filter(function(s) { return s['VERDICT'].toString().indexOf('MIXED') >= 0; });
+
+  // Date filter using normalized timestamps
+  if (df !== 'all') {
+    f = f.filter(function(s) { return getDateStr(s['TIMESTAMP']) === df; });
+  }
+
+  // Tab filters:
+  // BUYS = BULL verdict (contains 'BULL') — these always have DIR=UP due to direction agreement
+  // SELLS = BEAR verdict (contains 'BEAR') — these always have DIR=DN due to direction agreement
+  // MIXED = verdict is exactly 'MIXED'
+  // ALL = everything
+  if (dirFilter === 'up') {
+    f = f.filter(function(s) { return getVerdict(s).indexOf('BULL') >= 0; });
+  } else if (dirFilter === 'dn') {
+    f = f.filter(function(s) { return getVerdict(s).indexOf('BEAR') >= 0; });
+  } else if (dirFilter === 'mixed') {
+    f = f.filter(function(s) { return getVerdict(s) === 'MIXED'; });
+  }
+
   return f;
 }
 
 function buildDateFilter() {
   var sel = document.getElementById('df');
   var dates = {};
-  signals.forEach(function(s) { var d = toNYTime(s['TIMESTAMP']).slice(0,10); dates[d] = (dates[d]||0)+1; });
+  signals.forEach(function(s) {
+    var d = getDateStr(s['TIMESTAMP']);
+    if (d) dates[d] = (dates[d]||0)+1;
+  });
   var keys = Object.keys(dates).sort();
   sel.innerHTML = '<option value="all">All dates</option>';
   keys.forEach(function(d) { sel.innerHTML += '<option value="'+d+'">'+d+' ('+dates[d]+')</option>'; });
@@ -243,7 +281,7 @@ function renderPage() {
     var rp = sig['RTY'] ? '<td class="rp">'+parseFloat(sig['RTY']).toFixed(2)+'</td>' : '<td style="color:var(--text3)">-</td>';
 
     rows += '<tr onclick="showMatch('+globalIdx+')">' +
-      '<td class="ts">'+toNYTime(sig['TIMESTAMP'])+'</td>' +
+      '<td class="ts">'+normalizeTS(sig['TIMESTAMP'])+'</td>' +
       '<td class="np">'+parseFloat(sig['NQ']).toFixed(2)+'</td>' +
       ep + rp +
       '<td style="text-align:center">'+dirTag+'</td>' +
@@ -267,13 +305,12 @@ function showMatch(idx) {
   var matches = sig['MATCH_DATA'] || [];
   document.getElementById('pp-count').textContent = '-- '+sig['MATCH_COUNT']+' cross-day sessions';
   document.getElementById('pp-sub').textContent =
-    (isBuy?'BUY':'SELL')+' signal -- '+toNYTime(sig['TIMESTAMP'])+
+    (isBuy?'BUY':'SELL')+' signal -- '+normalizeTS(sig['TIMESTAMP'])+
     ' -- NQ '+parseFloat(sig['NQ']).toFixed(2)+
     ' -- 15m profit: +'+(parseFloat(sig['PROFIT_POTENTIAL'])||0).toFixed(1)+'pt'+
     ' -- drawdown: '+(parseFloat(sig['DRAWDOWN'])||0).toFixed(1)+
     ' -- 4hr: '+(sig['W240_NET']?(parseFloat(sig['W240_NET'])>0?'+':'')+parseFloat(sig['W240_NET']).toFixed(1):'?')+'pt';
 
-  // Outcome box
   var up = parseInt(sig['WENT_UP'])||0;
   var dn = parseInt(sig['WENT_DOWN'])||0;
   var total = parseInt(sig['MATCH_COUNT'])||0;
@@ -287,8 +324,9 @@ function showMatch(idx) {
   document.getElementById('oc-dd').textContent=(parseFloat(sig['DRAWDOWN'])||0).toFixed(1)+'pt';
   document.getElementById('oc-4hr').textContent=sig['W240_NET']?(parseFloat(sig['W240_NET'])>0?'+':'')+parseFloat(sig['W240_NET']).toFixed(1)+'pt':'?';
   var v=document.getElementById('oc-verdict');
-  v.textContent=sig['VERDICT'];
-  v.className='verdict '+(sig['VERDICT'].indexOf('BULL')>=0?'v-bull':sig['VERDICT'].indexOf('BEAR')>=0?'v-bear':'v-mixed');
+  var verdict = getVerdict(sig);
+  v.textContent=verdict;
+  v.className='verdict '+(verdict.indexOf('BULL')>=0?'v-bull':verdict.indexOf('BEAR')>=0?'v-bear':'v-mixed');
 
   if (!matches.length) {
     document.getElementById('ml').innerHTML='<div class="no-match">No match detail available.</div>';
@@ -302,10 +340,6 @@ function showMatch(idx) {
     var tier = m.score>=95?'VERY CLOSE':m.score>=85?'STRONG':'WEAK';
     var pw = Math.round((m.score-75)/25*100);
     var bc = m.score>=95?'#00e5a0':m.score>=85?'#e0a000':'#6080a0';
-    var mnet = m.w15_net;
-    var mIsBuy = mnet >= 0;
-    var mProfit = mIsBuy ? (m.w15_max_up||0) : Math.abs(m.w15_max_dn||0);
-    var mSig = mIsBuy ? '<span class="sig-buy">BUY</span>' : '<span class="sig-sell">SELL</span>';
 
     var wg = '<div class="win-grid">';
     [['15m',m.w15_net,m.w15_max_up,m.w15_max_dn,false],
@@ -403,7 +437,6 @@ function fetchData() {
     });
 }
 
-// Initial load then auto-refresh every 2 minutes
 fetchData();
 setInterval(fetchData, 120000);
 </script>
